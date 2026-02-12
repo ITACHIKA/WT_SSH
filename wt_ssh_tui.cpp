@@ -206,7 +206,7 @@ void clear_screen() {
 }
 
 void wait_enter() {
-    std::cout << color::hint << "\nPress Enter to continue..." << color::reset;
+    //std::cout << color::hint << "\nPress Enter to continue..." << color::reset;
     std::string dummy;
     std::getline(std::cin, dummy);
 }
@@ -290,8 +290,8 @@ bool is_ok_message(const std::string& msg) {
 
 void draw_ui(const std::vector<HostEntry>& entries, int selected, const std::string& msg) {
     clear_screen();
-    std::cout << color::title << "WT SSH Manager" << color::reset << "  "
-              << color::hint << "(Text UI)" << color::reset << "\n";
+    std::cout << color::title << "SSH Manager" << color::reset << "  "
+              << color::hint << " " << color::reset << "\n";
     std::cout << color::hint
               << "Use Arrow Up/Down to select | A Add | D Delete | C Connect | Q Quit"
               << color::reset << "\n";
@@ -364,7 +364,7 @@ int main() {
         int key = read_key();
         if (key == 'q' || key == 'Q') {
             clear_screen();
-            std::cout << color::title << "Goodbye." << color::reset << "\n";
+            //std::cout << color::title << "Goodbye." << color::reset << "\n";
             break;
         }
 
@@ -462,8 +462,7 @@ int main() {
 
             std::cout << color::title << "Connecting" << color::reset << ": " << e.name << " (" << target << ")\n";
             std::cout << color::hint << "Command" << color::reset << ": " << cmd.str() << "\n";
-            std::cout << color::hint << "Password is never stored. Authentication is handled by ssh." << color::reset
-                      << "\n\n";
+            //std::cout << color::hint << "Password is never stored. Authentication is handled by ssh." << color::reset<< "\n\n";
 
             std::system(cmd.str().c_str());
             wait_enter();
