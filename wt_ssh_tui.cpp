@@ -26,6 +26,18 @@ struct HostEntry {
     std::string note;
 };
 
+namespace color {
+constexpr const char* reset = "\x1b[0m";
+constexpr const char* title = "\x1b[1;36m";
+constexpr const char* hint = "\x1b[2;37m";
+constexpr const char* divider = "\x1b[2;34m";
+constexpr const char* selected = "\x1b[1;32m";
+constexpr const char* normal = "\x1b[0;37m";
+constexpr const char* warning = "\x1b[1;33m";
+constexpr const char* success = "\x1b[1;32m";
+constexpr const char* error = "\x1b[1;31m";
+}  // namespace color
+
 class HostStore {
 public:
     HostStore() {
@@ -58,6 +70,7 @@ public:
             if (cols.size() < 6) {
                 continue;
             }
+
             HostEntry e;
             e.name = unescape(cols[0]);
             e.host = unescape(cols[1]);
@@ -109,9 +122,13 @@ private:
         for (char ch : s) {
             if (ch == '\\' || ch == '\t' || ch == '\n') {
                 out.push_back('\\');
-                if (ch == '\t') out.push_back('t');
-                else if (ch == '\n') out.push_back('n');
-                else out.push_back('\\');
+                if (ch == '\t') {
+                    out.push_back('t');
+                } else if (ch == '\n') {
+                    out.push_back('n');
+                } else {
+                    out.push_back('\\');
+                }
             } else {
                 out.push_back(ch);
             }
@@ -156,13 +173,11 @@ private:
                 cur.push_back(ch);
                 continue;
             }
-
             if (!escaped && ch == '\t') {
                 cols.push_back(cur);
                 cur.clear();
                 continue;
             }
-
             cur.push_back(ch);
             escaped = false;
         }
@@ -174,11 +189,15 @@ private:
 #ifdef _WIN32
 void enable_ansi() {
     HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
-    if (hOut == INVALID_HANDLE_VALUE) return;
-    DWORD dwMode = 0;
-    if (!GetConsoleMode(hOut, &dwMode)) return;
-    dwMode |= ENABLE_VIRTUAL_TERMINAL_PROCESSING;
-    SetConsoleMode(hOut, dwMode);
+    if (hOut == INVALID_HANDLE_VALUE) {
+        return;
+    }
+    DWORD mode = 0;
+    if (!GetConsoleMode(hOut, &mode)) {
+        return;
+    }
+    mode |= ENABLE_VIRTUAL_TERMINAL_PROCESSING;
+    SetConsoleMode(hOut, mode);
 }
 #endif
 
@@ -187,7 +206,7 @@ void clear_screen() {
 }
 
 void wait_enter() {
-    std::cout << "\n按回车继续...";
+    std::cout << color::hint << "\nPress Enter to continue..." << color::reset;
     std::string dummy;
     std::getline(std::cin, dummy);
 }
@@ -203,7 +222,8 @@ int read_key() {
     }
     return ch;
 #else
-    termios oldt{}, newt{};
+    termios oldt{};
+    termios newt{};
     tcgetattr(STDIN_FILENO, &oldt);
     newt = oldt;
     newt.c_lflag &= static_cast<unsigned>(~(ICANON | ECHO));
@@ -226,18 +246,23 @@ int read_key() {
 
 std::string trim(const std::string& s) {
     size_t start = 0;
-    while (start < s.size() && std::isspace(static_cast<unsigned char>(s[start]))) start++;
+    while (start < s.size() && std::isspace(static_cast<unsigned char>(s[start]))) {
+        ++start;
+    }
     size_t end = s.size();
-    while (end > start && std::isspace(static_cast<unsigned char>(s[end - 1]))) end--;
+    while (end > start && std::isspace(static_cast<unsigned char>(s[end - 1]))) {
+        --end;
+    }
     return s.substr(start, end - start);
 }
 
 std::string prompt_line(const std::string& text, const std::string& def = "") {
-    std::cout << text;
+    std::cout << color::normal << text;
     if (!def.empty()) {
-        std::cout << " [" << def << "]";
+        std::cout << color::hint << " [" << def << "]" << color::normal;
     }
-    std::cout << ": ";
+    std::cout << ": " << color::reset;
+
     std::string line;
     std::getline(std::cin, line);
     line = trim(line);
@@ -250,45 +275,63 @@ std::string prompt_line(const std::string& text, const std::string& def = "") {
 std::string shell_quote(const std::string& s) {
     std::string out = "\"";
     for (char ch : s) {
-        if (ch == '"' || ch == '\\') out.push_back('\\');
+        if (ch == '"' || ch == '\\') {
+            out.push_back('\\');
+        }
         out.push_back(ch);
     }
     out.push_back('"');
     return out;
 }
 
+bool is_ok_message(const std::string& msg) {
+    return msg.rfind("Added:", 0) == 0 || msg.rfind("Deleted:", 0) == 0 || msg == "Delete canceled.";
+}
+
 void draw_ui(const std::vector<HostEntry>& entries, int selected, const std::string& msg) {
     clear_screen();
-    std::cout << "WT SSH Manager (TUI)\n";
-    std::cout << "上下方向键选择  A新增  D删除  C连接  Q退出\n";
-    std::cout << "------------------------------------------------------------\n";
+    std::cout << color::title << "WT SSH Manager" << color::reset << "  "
+              << color::hint << "(Text UI)" << color::reset << "\n";
+    std::cout << color::hint
+              << "Use Arrow Up/Down to select | A Add | D Delete | C Connect | Q Quit"
+              << color::reset << "\n";
+    std::cout << color::divider
+              << "------------------------------------------------------------"
+              << color::reset << "\n";
 
     if (entries.empty()) {
-        std::cout << "(暂无服务器，按 A 添加)\n";
+        std::cout << color::warning << "No saved servers yet. Press A to add one." << color::reset << "\n";
     } else {
         for (int i = 0; i < static_cast<int>(entries.size()); ++i) {
             const auto& e = entries[i];
-            bool is_sel = (i == selected);
-            std::cout << (is_sel ? "> " : "  ")
+            const bool is_selected = (i == selected);
+            std::cout << (is_selected ? color::selected : color::normal)
+                      << (is_selected ? "> " : "  ")
                       << e.name << " -> "
                       << (e.user.empty() ? "" : e.user + "@")
                       << e.host << ":" << e.port;
             if (!e.note.empty()) {
-                std::cout << "  # " << e.note;
+                std::cout << color::hint << "  # " << e.note;
             }
-            std::cout << "\n";
+            std::cout << color::reset << "\n";
         }
     }
 
-    std::cout << "------------------------------------------------------------\n";
+    std::cout << color::divider
+              << "------------------------------------------------------------"
+              << color::reset << "\n";
+
     if (!msg.empty()) {
-        std::cout << msg << "\n";
+        const char* msg_color = is_ok_message(msg) ? color::success : color::error;
+        std::cout << msg_color << msg << color::reset << "\n";
     }
 }
 
 bool name_exists(const std::vector<HostEntry>& entries, const std::string& name) {
     for (const auto& e : entries) {
-        if (e.name == name) return true;
+        if (e.name == name) {
+            return true;
+        }
     }
     return false;
 }
@@ -305,8 +348,12 @@ int main() {
 
     while (true) {
         if (!entries.empty()) {
-            if (selected < 0) selected = 0;
-            if (selected >= static_cast<int>(entries.size())) selected = static_cast<int>(entries.size()) - 1;
+            if (selected < 0) {
+                selected = 0;
+            }
+            if (selected >= static_cast<int>(entries.size())) {
+                selected = static_cast<int>(entries.size()) - 1;
+            }
         } else {
             selected = 0;
         }
@@ -317,7 +364,7 @@ int main() {
         int key = read_key();
         if (key == 'q' || key == 'Q') {
             clear_screen();
-            std::cout << "Bye.\n";
+            std::cout << color::title << "Goodbye." << color::reset << "\n";
             break;
         }
 
@@ -332,51 +379,59 @@ int main() {
 
         if (key == 'a' || key == 'A') {
             clear_screen();
-            std::cout << "== 添加服务器 ==\n";
+            std::cout << color::title << "== Add Server ==" << color::reset << "\n";
+
             HostEntry e;
-            e.name = prompt_line("名称(唯一)");
+            e.name = prompt_line("Name (unique)");
             if (e.name.empty()) {
-                message = "名称不能为空。";
+                message = "Name cannot be empty.";
                 continue;
             }
             if (name_exists(entries, e.name)) {
-                message = "名称已存在。";
+                message = "Name already exists.";
                 continue;
             }
-            e.host = prompt_line("主机/IP");
+
+            e.host = prompt_line("Host / IP");
             if (e.host.empty()) {
-                message = "主机不能为空。";
+                message = "Host cannot be empty.";
                 continue;
             }
-            e.user = prompt_line("用户名(可空)");
-            std::string port_str = prompt_line("端口", "22");
+
+            e.user = prompt_line("Username (optional)");
+            std::string port_str = prompt_line("Port", "22");
             try {
                 e.port = std::stoi(port_str);
             } catch (...) {
-                message = "端口无效，使用默认22。";
                 e.port = 22;
+                message = "Invalid port. Defaulted to 22.";
             }
-            e.key_file = prompt_line("私钥路径(可空)");
-            e.note = prompt_line("备注(可空)");
+
+            e.key_file = prompt_line("Private key path (optional)");
+            e.note = prompt_line("Note (optional)");
 
             entries.push_back(e);
             std::sort(entries.begin(), entries.end(), [](const HostEntry& a, const HostEntry& b) {
                 return a.name < b.name;
             });
             store.save(entries);
+
             for (int i = 0; i < static_cast<int>(entries.size()); ++i) {
                 if (entries[i].name == e.name) {
                     selected = i;
                     break;
                 }
             }
-            message = "已添加: " + e.name;
+
+            if (message.empty()) {
+                message = "Added: " + e.name;
+            }
             continue;
         }
 
         if ((key == 'd' || key == 'D') && !entries.empty()) {
             clear_screen();
-            std::cout << "确认删除 \"" << entries[selected].name << "\" ? (y/N): ";
+            std::cout << color::warning << "Delete \"" << entries[selected].name << "\" ? (y/N): " << color::reset;
             std::string ans;
             std::getline(std::cin, ans);
             if (!ans.empty() && (ans[0] == 'y' || ans[0] == 'Y')) {
@@ -386,9 +441,9 @@ int main() {
                 if (selected >= static_cast<int>(entries.size()) && !entries.empty()) {
                     selected = static_cast<int>(entries.size()) - 1;
                 }
-                message = "已删除: " + deleted;
+                message = "Deleted: " + deleted;
             } else {
-                message = "已取消删除。";
+                message = "Delete canceled.";
             }
             continue;
         }
@@ -396,6 +451,7 @@ int main() {
         if ((key == 'c' || key == 'C') && !entries.empty()) {
             const auto& e = entries[selected];
             clear_screen();
+
             std::ostringstream cmd;
             cmd << "ssh -p " << e.port << " ";
             if (!e.key_file.empty()) {
@@ -404,9 +460,11 @@ int main() {
             std::string target = e.user.empty() ? e.host : e.user + "@" + e.host;
             cmd << shell_quote(target);
 
-            std::cout << "正在连接: " << e.name << " (" << target << ")\n";
-            std::cout << "执行命令: " << cmd.str() << "\n";
-            std::cout << "(不会保存密码，认证由 ssh 处理)\n\n";
+            std::cout << color::title << "Connecting" << color::reset << ": " << e.name << " (" << target << ")\n";
+            std::cout << color::hint << "Command" << color::reset << ": " << cmd.str() << "\n";
+            std::cout << color::hint << "Password is never stored. Authentication is handled by ssh." << color::reset
+                      << "\n\n";
+
             std::system(cmd.str().c_str());
             wait_enter();
             continue;
