@@ -1,79 +1,60 @@
-# WT SSH Manager
+# WT SSH Manager (`wtssh`)
 
-一个适合 **Windows Terminal 纯文字界面** 使用的小工具：
-- 记录你常用的 SSH 服务器（像 PuTTY 保存会话一样）
-- 一键从列表中打开 SSH 连接
-- **不保存密码**，认证完全交给 `ssh`（密码输入 / 私钥 / agent）
+A native **C++ Text UI** SSH session manager for Windows Terminal.
 
-## 功能
+## What it does
 
-- 交互式菜单（默认启动）
-- 命令行模式（方便脚本或快速操作）
-- 主机信息本地保存到 `~/.wt_ssh_manager/hosts.json`
+- Save frequently used SSH targets (like PuTTY saved sessions).
+- Open SSH sessions from an interactive terminal UI.
+- Never store passwords.
+- Build and distribute as a standalone binary (`wtssh` / `wtssh.exe`).
 
-## 运行环境
+## Features
 
-- Python 3.9+
-- Windows 建议已安装 OpenSSH Client（`ssh` 命令可用）
+- Full-screen Text UI
+- Keyboard controls:
+  - `↑ / ↓` move selection
+  - `A` add server
+  - `D` delete server
+  - `C` connect
+  - `Q` quit
+- ANSI color styling for readability
+- Host data stored in:
+  - `~/.wt_ssh_manager/hosts.db`
 
-## 快速开始
-
-```bash
-python wt_ssh_manager.py
-```
-
-进入后可看到菜单：
-1. 查看服务器
-2. 添加服务器
-3. 删除服务器
-4. 连接服务器
-5. 退出
-
-## 命令行模式
-
-### 列出所有服务器
+## Build
 
 ```bash
-python wt_ssh_manager.py list
+cmake -S . -B build
+cmake --build build --config Release
 ```
 
-### 添加服务器
+Binary location:
+- Linux/macOS: `build/wtssh`
+- Windows: `build/Release/wtssh.exe` (or `build/wtssh.exe`, depending on generator)
+
+## Run
+
+Linux/macOS:
 
 ```bash
-python wt_ssh_manager.py add office 10.0.0.8 --user admin --port 22 --note "办公室机器"
+./build/wtssh
 ```
 
-### 删除服务器
+Windows PowerShell:
 
-```bash
-python wt_ssh_manager.py remove office
+```powershell
+.\build\Release\wtssh.exe
 ```
 
-### 连接服务器
+If `wtssh.exe` is in your `PATH`, just run:
 
-```bash
-python wt_ssh_manager.py connect office
+```powershell
+wtssh
 ```
 
-## 数据示例
+## Security notes
 
-`~/.wt_ssh_manager/hosts.json` 大概长这样：
-
-```json
-[
-  {
-    "name": "office",
-    "host": "10.0.0.8",
-    "user": "admin",
-    "port": 22,
-    "key_file": null,
-    "note": "办公室机器"
-  }
-]
-```
-
-## 安全说明
-
-- 本工具不会记录 SSH 密码。
-- 如果你设置了 `key_file`，记录的是密钥路径，不是密钥内容。
-
+- Passwords are never stored.
+- If configured, only the private key **path** is saved, not key content.
+- Authentication is handled by your system `ssh` client.
