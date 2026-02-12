@@ -448,7 +448,7 @@ int main() {
             continue;
         }
 
-        if ((key == 'c' || key == 'C') && !entries.empty()) {
+        if ((key == 'c' || key == 'C' || key == 13) && !entries.empty()) {
             const auto& e = entries[selected];
             clear_screen();
 
@@ -462,10 +462,11 @@ int main() {
 
             std::cout << color::title << "Connecting" << color::reset << ": " << e.name << " (" << target << ")\n";
             std::cout << color::hint << "Command" << color::reset << ": " << cmd.str() << "\n";
-            //std::cout << color::hint << "Password is never stored. Authentication is handled by ssh." << color::reset<< "\n\n";
+            std::cout << color::hint << "Note: Password is never stored by sshm." << color::reset<< "\n\n";
 
             std::system(cmd.str().c_str());
-            wait_enter();
+            //wait_enter();
+            return 0; //quit after one session complete
             continue;
         }
     }
