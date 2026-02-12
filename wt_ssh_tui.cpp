@@ -293,7 +293,7 @@ void draw_ui(const std::vector<HostEntry>& entries, int selected, const std::str
     std::cout << color::title << "SSH Manager" << color::reset << "  "
               << color::hint << " " << color::reset << "\n";
     std::cout << color::hint
-              << "Use Arrow Up/Down to select | A Add | D Delete | C Connect | Q Quit"
+              << "Use Arrow Up/Down to select | A Add | D Delete | C/Enter Connect | Q Quit"
               << color::reset << "\n";
     std::cout << color::divider
               << "------------------------------------------------------------"
