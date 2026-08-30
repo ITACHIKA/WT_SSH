@@ -1,3 +1,8 @@
 *.exe
 *.out
 build
+build-*/
+tests
+!tests/
+!tests/*.cpp
+!tests/*.ps1
