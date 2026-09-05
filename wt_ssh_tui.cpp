@@ -43,6 +43,7 @@ struct HostEntry {
     AuthMode auth_mode = AuthMode::Auto;
     X11Mode x11_mode = X11Mode::Disabled;
     std::string display;
+    std::vector<std::string> local_forwards;
 };
 
 namespace color {
@@ -94,6 +95,26 @@ X11Mode x11_from_string(const std::string& value) {
     if (v == "x" || v == "untrusted") return X11Mode::Untrusted;
     if (v == "y" || v == "trusted") return X11Mode::Trusted;
     return X11Mode::Disabled;
+}
+
+std::string join_local_forwards(const std::vector<std::string>& forwards, const char* separator) {
+    std::ostringstream out;
+    for (size_t i = 0; i < forwards.size(); ++i) {
+        if (i != 0) out << separator;
+        out << forwards[i];
+    }
+    return out.str();
+}
+
+std::vector<std::string> split_local_forwards(const std::string& value, char separator) {
+    std::vector<std::string> forwards;
+    std::string current;
+    std::istringstream input(value);
+    while (std::getline(input, current, separator)) {
+        current = trim(current);
+        if (!current.empty()) forwards.push_back(std::move(current));
+    }
+    return forwards;
 }
 
 std::string make_id() {
@@ -184,6 +205,7 @@ public:
                 e.x11_mode = x11_from_string(unescape(cols[8]));
                 e.display = unescape(cols[9]);
             }
+            if (cols.size() >= 11) e.local_forwards = split_local_forwards(unescape(cols[10]), '\n');
             entries.push_back(std::move(e));
         }
         sort_entries(entries);
@@ -201,12 +223,13 @@ public:
         {
             std::ofstream out(temp, std::ios::binary | std::ios::trunc);
             if (!out.is_open()) { error_message = "Unable to open temporary configuration file."; return false; }
-            out << "# wtssh-v2\n";
+            out << "# wtssh-v3\n";
             for (const auto& e : entries) {
                 out << escape(e.name) << '\t' << escape(e.host) << '\t' << escape(e.user) << '\t'
                     << e.port << '\t' << escape(e.key_file) << '\t' << escape(e.note) << '\t'
                     << escape(e.id) << '\t' << auth_to_string(e.auth_mode) << '\t'
-                    << x11_to_string(e.x11_mode) << '\t' << escape(e.display) << '\n';
+                    << x11_to_string(e.x11_mode) << '\t' << escape(e.display) << '\t'
+                    << escape(join_local_forwards(e.local_forwards, "\n")) << '\n';
             }
             out.flush();
             if (!out.good()) {
@@ -380,6 +403,61 @@ bool parse_port(const std::string& value, int& port) {
     } catch (...) { return false; }
 }
 
+bool validate_local_forward(const std::string& specification, std::string& error_message) {
+    if (specification.empty()) {
+        error_message = "Local forwarding rule cannot be empty.";
+        return false;
+    }
+    if (std::any_of(specification.begin(), specification.end(), [](unsigned char ch) { return std::isspace(ch) != 0; })) {
+        error_message = "Local forwarding rules cannot contain whitespace.";
+        return false;
+    }
+
+    std::vector<std::string> fields;
+    std::string field;
+    bool inside_brackets = false;
+    for (char ch : specification) {
+        if (ch == '[') {
+            if (inside_brackets) { error_message = "Local forwarding rule has invalid brackets."; return false; }
+            inside_brackets = true;
+            field.push_back(ch);
+        } else if (ch == ']') {
+            if (!inside_brackets) { error_message = "Local forwarding rule has invalid brackets."; return false; }
+            inside_brackets = false;
+            field.push_back(ch);
+        } else if (ch == ':' && !inside_brackets) {
+            fields.push_back(field);
+            field.clear();
+        } else {
+            field.push_back(ch);
+        }
+    }
+    if (inside_brackets) { error_message = "Local forwarding rule has an unclosed bracket."; return false; }
+    fields.push_back(field);
+    if (fields.size() != 3 && fields.size() != 4) {
+        error_message = "Use [bind_address:]local_port:destination_host:destination_port.";
+        return false;
+    }
+
+    const size_t local_port_index = fields.size() == 4 ? 1 : 0;
+    const size_t destination_host_index = local_port_index + 1;
+    const size_t destination_port_index = local_port_index + 2;
+    int ignored_port = 0;
+    if (!parse_port(fields[local_port_index], ignored_port)) {
+        error_message = "Local forwarding local_port must be between 1 and 65535.";
+        return false;
+    }
+    if (fields[destination_host_index].empty()) {
+        error_message = "Local forwarding destination_host cannot be empty.";
+        return false;
+    }
+    if (!parse_port(fields[destination_port_index], ignored_port)) {
+        error_message = "Local forwarding destination_port must be between 1 and 65535.";
+        return false;
+    }
+    return true;
+}
+
 AuthMode prompt_auth_mode(AuthMode current, bool has_key) {
     const std::string def = auth_to_string(current == AuthMode::Auto && has_key ? AuthMode::Key : current);
     while (true) {
@@ -418,6 +496,36 @@ void configure_x11(HostEntry& e, bool editing) {
     e.display = editing ? prompt_optional_edit("Local DISPLAY", def) : prompt_line("Local DISPLAY", def);
 }
 
+bool configure_local_forwards(HostEntry& e, bool editing, std::string& error_message) {
+    std::cout << color::title << "Local port forwarding (ssh -L)" << color::reset << '\n'
+              << color::hint << "  Format:   [bind_address:]local_port:destination_host:destination_port\n"
+              << "  Example:  127.0.0.1:5433:db.internal:5432\n"
+              << "            8080:127.0.0.1:80\n"
+              << "  Multiple: separate rules with a semicolon (;)\n"
+              << "  Meaning:  listen on this computer, then connect to the destination from the SSH server\n"
+              << "  Binding:  omit bind_address for OpenSSH's loopback default; 0.0.0.0 or * exposes the port\n";
+    if (editing)
+        std::cout << "  Editing:  press Enter to keep the current rules, or enter - to remove all rules\n";
+    else
+        std::cout << "  Optional: press Enter to create the host without local forwarding\n";
+    std::cout << color::reset;
+
+    const auto current = join_local_forwards(e.local_forwards, ";");
+    const std::string prompt = "Forwarding rules";
+    const auto value = editing ? prompt_optional_edit(prompt, current) : prompt_line(prompt);
+    if (value.empty()) { e.local_forwards.clear(); return true; }
+
+    auto forwards = split_local_forwards(value, ';');
+    for (const auto& forward : forwards) {
+        if (!validate_local_forward(forward, error_message)) {
+            error_message += " Invalid rule: " + forward;
+            return false;
+        }
+    }
+    e.local_forwards = std::move(forwards);
+    return true;
+}
+
 std::optional<HostEntry> prompt_host_fields(const std::vector<HostEntry>& entries, HostEntry e, bool editing,
                                             std::string& error_message) {
     e.name = editing ? prompt_line("Name (unique)", e.name) : prompt_line("Name (unique)");
@@ -436,6 +544,7 @@ std::optional<HostEntry> prompt_host_fields(const std::vector<HostEntry>& entrie
     e.auth_mode = prompt_auth_mode(e.auth_mode, !e.key_file.empty());
     if (e.auth_mode == AuthMode::Key && e.key_file.empty()) { error_message = "Key authentication requires a private key path."; return std::nullopt; }
     configure_x11(e, editing);
+    if (!configure_local_forwards(e, editing, error_message)) return std::nullopt;
     return e;
 }
 
@@ -570,6 +679,14 @@ std::vector<std::string> build_ssh_args(const HostEntry& e) {
     std::vector<std::string> args{"-p", std::to_string(e.port)};
     if (e.x11_mode == X11Mode::Untrusted) args.push_back("-X");
     else if (e.x11_mode == X11Mode::Trusted) args.push_back("-Y");
+    for (const auto& forward : e.local_forwards) {
+        args.push_back("-L");
+        args.push_back(forward);
+    }
+    if (!e.local_forwards.empty()) {
+        args.push_back("-o");
+        args.push_back("ExitOnForwardFailure=yes");
+    }
     if (!e.key_file.empty() && e.auth_mode != AuthMode::SavedPassword) { args.push_back("-i"); args.push_back(e.key_file); }
     if (e.auth_mode == AuthMode::Key) {
         args.push_back("-o"); args.push_back("PreferredAuthentications=publickey");
@@ -586,6 +703,12 @@ std::vector<std::string> build_ssh_args(const HostEntry& e) {
 
 int launch_ssh(const HostEntry& entry, std::string& error_message) {
     if (entry.x11_mode != X11Mode::Disabled && entry.display.empty()) { error_message = "X11 forwarding requires a local DISPLAY value."; return -1; }
+    for (const auto& forward : entry.local_forwards) {
+        if (!validate_local_forward(forward, error_message)) {
+            error_message += " Invalid rule: " + forward;
+            return -1;
+        }
+    }
     const auto args = build_ssh_args(entry);
 #ifdef _WIN32
     const auto ssh_path = resolve_ssh_path(error_message);
@@ -703,6 +826,7 @@ std::string flags_for(const HostEntry& e) {
     else if (e.auth_mode == AuthMode::Key) flags += " [key]";
     if (e.x11_mode == X11Mode::Untrusted) flags += " [X11 -X]";
     else if (e.x11_mode == X11Mode::Trusted) flags += " [X11 -Y]";
+    if (!e.local_forwards.empty()) flags += " [local forwards: " + std::to_string(e.local_forwards.size()) + "]";
     return flags;
 }
 
@@ -782,7 +906,7 @@ bool migrate_entries(std::vector<HostEntry>& entries, HostStore& store, std::str
     for (auto& entry : entries) if (entry.id.empty()) { entry.id = make_id(); changed = true; }
     if (!changed) return true;
     if (!store.save(entries, message)) return false;
-    message = "Migrated existing host records to v2."; return true;
+    message = "Migrated existing host records to v3."; return true;
 }
 
 int connect_entry(const HostEntry& e, const CredentialStore& credentials) {
@@ -794,6 +918,8 @@ int connect_entry(const HostEntry& e, const CredentialStore& credentials) {
     std::cout << color::title << "Connecting" << color::reset << ": " << e.name << " (" << target << ")\n"
               << color::hint << "Command" << color::reset << ": " << display_command(e) << '\n';
     if (e.x11_mode != X11Mode::Disabled) std::cout << color::hint << "Local DISPLAY" << color::reset << ": " << e.display << '\n';
+    for (const auto& forward : e.local_forwards)
+        std::cout << color::hint << "Local forward" << color::reset << ": " << forward << '\n';
     std::cout << '\n';
     std::string error_message; const int result = launch_ssh(e, error_message);
     if (!error_message.empty()) std::cerr << color::error << error_message << color::reset << '\n';

@@ -40,8 +40,8 @@ try {
     Assert-True ($LASTEXITCODE -eq 0) 'Legacy list command failed.'
     Assert-True (($listOutput -join "`n") -match 'legacy') 'Legacy record was not loaded.'
     $migrated = [IO.File]::ReadAllLines((Join-Path $testRoot 'hosts.db'))
-    Assert-True ($migrated[0] -eq '# wtssh-v2') 'Legacy database did not receive the v2 header.'
-    Assert-True (($migrated[1] -split "`t", -1).Count -eq 10) 'Legacy database did not migrate to ten columns.'
+    Assert-True ($migrated[0] -eq '# wtssh-v3') 'Legacy database did not receive the v3 header.'
+    Assert-True (($migrated[1] -split "`t", -1).Count -eq 11) 'Legacy database did not migrate to eleven columns.'
 
     $env:WTSSH_SSH_PATH = $FakeSsh
     $env:DISPLAY = 'parent-display:99.0'
@@ -65,6 +65,25 @@ try {
     $captured = [IO.File]::ReadAllLines($capture)
     Assert-True ($captured -contains 'ARG=-Y') 'The -Y option was not passed.'
     Assert-True ($captured -contains 'ENV_DISPLAY=localhost:8.0') 'Trusted X11 DISPLAY was not passed.'
+
+    $tunnelLine = "tunnel`tjump.example`tcarol`t22`t`tTunnel test`ttunnel-id`tauto`toff`t`t127.0.0.1:5433:db.internal:5432\n8080:127.0.0.1:80"
+    [IO.File]::WriteAllText((Join-Path $testRoot 'hosts.db'), "# wtssh-v3`n$tunnelLine`n", [Text.UTF8Encoding]::new($false))
+    & $Wtssh --connect tunnel | Out-Null
+    Assert-True ($LASTEXITCODE -eq 0) 'Local-forwarding fake SSH launch failed.'
+    $captured = [IO.File]::ReadAllLines($capture)
+    Assert-True (($captured | Where-Object { $_ -eq 'ARG=-L' }).Count -eq 2) 'Each forwarding rule did not receive its own -L option.'
+    Assert-True ($captured -contains 'ARG=127.0.0.1:5433:db.internal:5432') 'The bound local forwarding rule was not preserved.'
+    Assert-True ($captured -contains 'ARG=8080:127.0.0.1:80') 'The default-bind local forwarding rule was not preserved.'
+    Assert-True ($captured -contains 'ARG=ExitOnForwardFailure=yes') 'Forwarding failure handling was not enabled.'
+
+    $invalidTunnelLine = "invalid-tunnel`tjump.example`tcarol`t22`t`tInvalid tunnel`ttunnel-invalid-id`tauto`toff`t`t70000:db.internal:5432"
+    [IO.File]::WriteAllText((Join-Path $testRoot 'hosts.db'), "# wtssh-v3`n$invalidTunnelLine`n", [Text.UTF8Encoding]::new($false))
+    $savedErrorActionPreference = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    & $Wtssh --connect invalid-tunnel 2>$null | Out-Null
+    $invalidTunnelExitCode = $LASTEXITCODE
+    $ErrorActionPreference = $savedErrorActionPreference
+    Assert-True ($invalidTunnelExitCode -ne 0) 'An invalid local forwarding port was accepted.'
 
     & cmdkey.exe "/generic:$credentialTarget" '/user:alice' "/pass:$testPassword" | Out-Null
     Assert-True ($LASTEXITCODE -eq 0) 'Unable to create temporary Credential Manager entry.'

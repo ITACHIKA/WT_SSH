@@ -6,6 +6,7 @@ A cross-platform C++17 text UI launcher for OpenSSH.
 
 - Save SSH hosts, ports, usernames, key paths, and notes.
 - Store optional passwords in the operating system's native credential vault.
+- Configure one or more per-host OpenSSH local (`-L`) forwarding rules.
 - Per-host X11 forwarding: `off`, untrusted `-X`, or trusted `-Y`.
 - Set `DISPLAY` only in the spawned SSH process.
 - Edit existing hosts and automatically migrate the original six-column database format.
@@ -125,7 +126,7 @@ Host configuration is stored in `~/.wt_ssh_manager/hosts.db` (`%USERPROFILE%\.wt
 
 - `Up` / `Down`: move selection
 - `A`: add server
-- `E`: edit server, password, and X11 settings
+- `E`: edit server, password, local forwarding, and X11 settings
 - `D`: delete server and its saved credential
 - `C` / `Enter`: connect
 - `Q`: quit
@@ -135,6 +136,22 @@ Host configuration is stored in `~/.wt_ssh_manager/hosts.db` (`%USERPROFILE%\.wt
 On Linux and macOS, an existing `DISPLAY` is used as the default. On Windows, start an X server such as VcXsrv or Xming; `localhost:0.0` is a common value. The manager supplies this value only to the local SSH client. OpenSSH sets the remote `DISPLAY` automatically.
 
 The remote SSH server must permit X11 forwarding and normally needs `xauth`. Prefer `-X`; use `-Y` only for trusted remote systems.
+
+## Local SSH forwarding
+
+When adding or editing a host, enter one or more TCP forwarding rules in OpenSSH's `-L` form:
+
+```text
+[bind_address:]local_port:destination_host:destination_port
+```
+
+Separate multiple rules with a semicolon. Examples:
+
+```text
+127.0.0.1:5433:db.internal:5432;8080:127.0.0.1:80
+```
+
+The first rule exposes the remote-side `db.internal:5432` at local `127.0.0.1:5433`. The second exposes the SSH server's own port 80 at local port 8080. Each rule is passed as a separate `-L` argument, and `ExitOnForwardFailure=yes` makes the connection fail if SSH cannot establish the requested forwarding. Omit the bind address to use OpenSSH's default local loopback binding; avoid `0.0.0.0` or `*` unless other machines should be able to reach the forwarded port.
 
 ## Password behavior and limitations
 
