@@ -1,6 +1,6 @@
-# WT SSH Manager (`wtssh`)
+# WT SSH/SCP Managers (`wtssh` and `scpm`)
 
-A cross-platform C++17 text UI launcher for OpenSSH.
+Cross-platform C++17 text UI tools for OpenSSH connections and SCP uploads.
 
 ## Features
 
@@ -11,6 +11,8 @@ A cross-platform C++17 text UI launcher for OpenSSH.
 - Set `DISPLAY` only in the spawned SSH process.
 - Edit existing hosts and automatically migrate the original six-column database format.
 - Launch OpenSSH without an intermediate command shell (`CreateProcessW` on Windows and `posix_spawnp` on POSIX).
+- Upload a local file with `scpm` by selecting any host already stored by `wtssh`.
+- Reuse the same host database, private-key settings, and native-vault passwords in both programs.
 
 Passwords are never written to `hosts.db`, command-line arguments, or child environment variables. The SSH child receives only a credential record ID and obtains the password through OpenSSH's `SSH_ASKPASS` protocol.
 
@@ -110,6 +112,7 @@ Show the backend compiled into the executable:
 
 ```bash
 wtssh --credential-backend
+scpm --credential-backend
 ```
 
 ## Run
@@ -121,6 +124,37 @@ wtssh --connect my-server
 ```
 
 Host configuration is stored in `~/.wt_ssh_manager/hosts.db` (`%USERPROFILE%\.wt_ssh_manager\hosts.db` on Windows).
+
+### Upload files with `scpm`
+
+Start the SCP TUI, select a saved server, and press `C` or `Enter`:
+
+```bash
+scpm
+```
+
+The program asks for:
+
+1. One or more local file paths. You can select multiple files in Explorer and drag them into the terminal; quoted paths separated by spaces are parsed as separate files.
+2. The remote destination path, such as `~/uploads/` or `/tmp/report.csv`.
+
+The destination is built from the selected host, for example:
+
+```text
+scp -P 2222 -- "report one.csv" "report two.csv" alice@example.com:~/uploads/
+```
+
+For multiple files, use a remote directory as the destination. A single existing path containing spaces is also accepted without quotes when entered manually. `scpm` uploads regular files only; directory upload is intentionally not enabled. It reads the same `hosts.db` and credential record IDs as `wtssh`, but does not modify them. Add, edit, or delete hosts in the SSH manager. X11 and local-forwarding settings are ignored during SCP transfers.
+
+For scripts or direct invocation:
+
+```bash
+scpm --list
+scpm --send my-server "local report.csv" "~/uploads/report.csv"
+scpm --send my-server "report one.csv" "report two.csv" "~/uploads/"
+```
+
+SCP uses uppercase `-P` for the SSH server port. As with ordinary `scp`, specifying an existing remote filename may overwrite that remote file.
 
 ## Keyboard controls
 
@@ -165,6 +199,8 @@ Native credential vaults protect passwords at rest for the logged-in user, but s
 ctest --test-dir build --output-on-failure
 wtssh --self-test-credential
 ```
+
+The Windows test suite covers both SSH launching and SCP uploads using fake client executables, so it does not contact real servers.
 
 The credential self-test creates, reads, and immediately removes a randomly named credential. Test-only environment overrides are:
 

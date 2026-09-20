@@ -76,4 +76,5 @@ if ((run_tests)); then
   ctest --test-dir "$build_directory" --build-config "$configuration" --output-on-failure
 fi
 
-echo "Build completed: $build_directory/wtssh"
+echo "SSH manager built: $build_directory/wtssh"
+echo "SCP manager built: $build_directory/scpm"

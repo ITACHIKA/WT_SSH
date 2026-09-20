@@ -68,18 +68,32 @@ add_executable(wtssh
     src/credential_store.cpp
     ${WTSSH_CREDENTIAL_SOURCE}
 )
+add_executable(scpm
+    scp_tui.cpp
+    src/scp_paths.cpp
+    src/credential_store.cpp
+    ${WTSSH_CREDENTIAL_SOURCE}
+)
 target_include_directories(wtssh PRIVATE src)
+target_include_directories(scpm PRIVATE src)
 
 if(WTSSH_CREDENTIAL_BACKEND_RESOLVED STREQUAL "windows")
     target_link_libraries(wtssh PRIVATE Advapi32)
+    target_link_libraries(scpm PRIVATE Advapi32)
 elseif(WTSSH_CREDENTIAL_BACKEND_RESOLVED STREQUAL "keychain")
     target_link_libraries(wtssh PRIVATE "-framework Security" "-framework CoreFoundation")
+    target_link_libraries(scpm PRIVATE "-framework Security" "-framework CoreFoundation")
 elseif(WTSSH_CREDENTIAL_BACKEND_RESOLVED STREQUAL "libsecret")
     target_link_libraries(wtssh PRIVATE PkgConfig::LIBSECRET)
+    target_link_libraries(scpm PRIVATE PkgConfig::LIBSECRET)
 endif()
 
 include(CTest)
 if(BUILD_TESTING)
+    add_executable(scpm_paths_test tests/scp_paths_test.cpp src/scp_paths.cpp)
+    target_include_directories(scpm_paths_test PRIVATE src)
+    add_test(NAME scpm_paths COMMAND scpm_paths_test)
+
     add_executable(wtssh_fake_ssh tests/fake_ssh.cpp)
     if(WIN32)
         add_test(
@@ -88,6 +102,14 @@ if(BUILD_TESTING)
                 -File ${CMAKE_CURRENT_SOURCE_DIR}/tests/run_integration.ps1
                 -Wtssh $<TARGET_FILE:wtssh>
                 -FakeSsh $<TARGET_FILE:wtssh_fake_ssh>
+                -BuildDir ${CMAKE_CURRENT_BINARY_DIR}
+        )
+        add_test(
+            NAME scpm_integration
+            COMMAND powershell -NoProfile -ExecutionPolicy Bypass
+                -File ${CMAKE_CURRENT_SOURCE_DIR}/tests/run_scp_integration.ps1
+                -Scpm $<TARGET_FILE:scpm>
+                -FakeScp $<TARGET_FILE:wtssh_fake_ssh>
                 -BuildDir ${CMAKE_CURRENT_BINARY_DIR}
         )
     endif()

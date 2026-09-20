@@ -54,7 +54,11 @@ if (-not $SkipTests) {
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 }
 
-$singleConfigBinary = Join-Path $BuildDirectory 'wtssh.exe'
-$multiConfigBinary = Join-Path (Join-Path $BuildDirectory $Configuration) 'wtssh.exe'
-$binary = if (Test-Path -LiteralPath $singleConfigBinary) { $singleConfigBinary } else { $multiConfigBinary }
-Write-Host "Build completed: $binary"
+$singleConfigSsh = Join-Path $BuildDirectory 'wtssh.exe'
+$multiConfigSsh = Join-Path (Join-Path $BuildDirectory $Configuration) 'wtssh.exe'
+$sshBinary = if (Test-Path -LiteralPath $singleConfigSsh) { $singleConfigSsh } else { $multiConfigSsh }
+$singleConfigScp = Join-Path $BuildDirectory 'scpm.exe'
+$multiConfigScp = Join-Path (Join-Path $BuildDirectory $Configuration) 'scpm.exe'
+$scpBinary = if (Test-Path -LiteralPath $singleConfigScp) { $singleConfigScp } else { $multiConfigScp }
+Write-Host "SSH manager built: $sshBinary"
+Write-Host "SCP manager built: $scpBinary"
