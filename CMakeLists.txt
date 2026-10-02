@@ -65,11 +65,13 @@ message(STATUS "WT SSH credential backend: ${WTSSH_CREDENTIAL_BACKEND_RESOLVED}"
 
 add_executable(wtssh
     wt_ssh_tui.cpp
+    src/askpass_prompt.cpp
     src/credential_store.cpp
     ${WTSSH_CREDENTIAL_SOURCE}
 )
 add_executable(scpm
     scp_tui.cpp
+    src/askpass_prompt.cpp
     src/scp_paths.cpp
     src/credential_store.cpp
     ${WTSSH_CREDENTIAL_SOURCE}
@@ -93,6 +95,10 @@ if(BUILD_TESTING)
     add_executable(scpm_paths_test tests/scp_paths_test.cpp src/scp_paths.cpp)
     target_include_directories(scpm_paths_test PRIVATE src)
     add_test(NAME scpm_paths COMMAND scpm_paths_test)
+
+    add_executable(askpass_prompt_test tests/askpass_prompt_test.cpp src/askpass_prompt.cpp)
+    target_include_directories(askpass_prompt_test PRIVATE src)
+    add_test(NAME askpass_prompt COMMAND askpass_prompt_test)
 
     add_executable(wtssh_fake_ssh tests/fake_ssh.cpp)
     if(WIN32)

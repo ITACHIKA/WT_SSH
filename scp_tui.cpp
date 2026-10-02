@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "src/credential_store.h"
+#include "src/askpass_prompt.h"
 #include "src/scp_paths.h"
 
 #ifdef _WIN32
@@ -503,21 +504,35 @@ std::string display_command(const HostEntry& entry, const std::vector<std::strin
 
 int run_askpass(int argc, char** argv) {
     const char* hint = std::getenv("SSH_ASKPASS_PROMPT");
-    if (hint && std::string(hint) == "confirm") {
+    const char* prompt_text = argc > 1 ? argv[1] : "OpenSSH confirmation";
+    const auto prompt_kind = classify_askpass_prompt(hint, prompt_text);
+    if (prompt_kind != AskpassPromptKind::Secret) {
 #ifdef _WIN32
         const wchar_t* prompt = L"OpenSSH confirmation";
         std::wstring converted;
-        if (argc > 1) { converted = utf8_to_wide(argv[1]); if (!converted.empty()) prompt = converted.c_str(); }
-        return MessageBoxW(nullptr, prompt, L"SCP Manager", MB_YESNO | MB_ICONWARNING | MB_SETFOREGROUND) == IDYES ? 0 : 1;
+        converted = utf8_to_wide(prompt_text);
+        if (!converted.empty()) prompt = converted.c_str();
+        if (MessageBoxW(nullptr, prompt, L"SCP Manager",
+                        MB_YESNO | MB_ICONWARNING | MB_SETFOREGROUND) != IDYES) return 1;
+        if (prompt_kind == AskpassPromptKind::TextConfirmation) {
+            DWORD written = 0;
+            HANDLE output = GetStdHandle(STD_OUTPUT_HANDLE);
+            static constexpr char response[] = "yes\n";
+            if (!WriteFile(output, response, sizeof(response) - 1, &written, nullptr) ||
+                written != sizeof(response) - 1) return 1;
+        }
+        return 0;
 #else
         const int terminal = open("/dev/tty", O_RDWR);
         if (terminal < 0) return 1;
-        const std::string prompt = std::string(argc > 1 ? argv[1] : "OpenSSH confirmation") + " [y/N]: ";
+        const std::string prompt = std::string(prompt_text) + " [y/N]: ";
         (void)write(terminal, prompt.data(), prompt.size());
         char answer[8]{};
         const ssize_t count = read(terminal, answer, sizeof(answer) - 1);
         close(terminal);
-        return count > 0 && (answer[0] == 'y' || answer[0] == 'Y') ? 0 : 1;
+        if (count <= 0 || (answer[0] != 'y' && answer[0] != 'Y')) return 1;
+        if (prompt_kind == AskpassPromptKind::TextConfirmation && write(STDOUT_FILENO, "yes\n", 4) != 4) return 1;
+        return 0;
 #endif
     }
     const char* id = std::getenv("WTSSH_CREDENTIAL_ID");

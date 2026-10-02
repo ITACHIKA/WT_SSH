@@ -191,6 +191,8 @@ The first rule exposes the remote-side `db.internal:5432` at local `127.0.0.1:54
 
 Saved-password mode restricts OpenSSH to the `password` authentication method with one attempt. It intentionally does not automatically answer keyboard-interactive/MFA challenges. Use `auto` mode for interactive MFA or key authentication where possible.
 
+On the first connection to an unknown server, saved-password mode shows a separate host-key confirmation dialog. Review the hostname and fingerprint before choosing **Yes**. The password is requested from the native credential vault only after host verification succeeds. Both OpenSSH confirmation-hint prompts and Windows OpenSSH versions that use a normal textual `yes/no` prompt are supported.
+
 Native credential vaults protect passwords at rest for the logged-in user, but software already running as that user may be able to request the same credentials. Secret buffers are cleared after use.
 
 ## Tests and diagnostics
